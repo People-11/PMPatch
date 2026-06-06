@@ -15,5 +15,14 @@ dependencyResolutionManagement {
     }
 }
 
+def androidVmToolsDir = file('external/AndroidVMTools')
+if (androidVmToolsDir.exists()) {
+    includeBuild(androidVmToolsDir) {
+        dependencySubstitution {
+            substitute module('com.github.vova7878:AndroidVMTools') using project(':')
+        }
+    }
+}
+
 rootProject.name = "PMPatch"
 include ':module'

@@ -33,34 +33,42 @@ public class HookList {
         static final AccessI INSTANCE = AccessLinker.generateImpl(AccessI.class);
     }
 
-    public static void initCommon(BulkHooker hooks) {
-        if (BuildConfig.PATCH_1 && booleanProperty("PATCH_1")) {
-            HookTransformer verify_impl = (original, frame) -> {
-                HTF.printStackTrace(frame);
-                var accessor = frame.accessor();
+    private static void addSignatureVerifyHooks(BulkHooker hooks) {
+        HookTransformer verify_impl = (original, frame) -> {
+            HTF.printStackTrace(frame);
+            var accessor = frame.accessor();
 
-                Signature thiz = accessor.getReference(0);
-                switch (thiz.getAlgorithm().toLowerCase()) {
-                    case "rsa-sha1", "sha1withrsa", "sha256withdsa", "sha256withrsa" -> {
-                        int state = AccessI.INSTANCE.state(thiz);
-                        if (state == 3 /* Signature.VERIFY */) {
-                            frame.accessor().setBoolean(RETURN_VALUE_IDX, true);
-                            return;
-                        }
+            Signature thiz = accessor.getReference(0);
+            switch (thiz.getAlgorithm().toLowerCase()) {
+                case "rsa-sha1", "sha1withrsa", "sha256withdsa", "sha256withrsa" -> {
+                    int state = AccessI.INSTANCE.state(thiz);
+                    if (state == 3 /* Signature.VERIFY */) {
+                        frame.accessor().setBoolean(RETURN_VALUE_IDX, true);
+                        return;
                     }
                 }
+            }
 
-                Transformers.invokeExact(original, frame);
-            };
+            Transformers.invokeExact(original, frame);
+        };
 
-            hooks.addExact(verify_impl, "java.security.Signature", "verify", "boolean", "byte[]");
-            hooks.addExact(verify_impl, "java.security.Signature", "verify", "boolean", "byte[]", "int", "int");
+        hooks.addExact(verify_impl, "java.security.Signature", "verify", "boolean", "byte[]");
+        hooks.addExact(verify_impl, "java.security.Signature", "verify", "boolean", "byte[]", "int", "int");
 
-            hooks.addExact(HTF.TRUE, "com.android.org.conscrypt.OpenSSLSignature", "engineVerify", "boolean", "byte[]");
+        hooks.addExact(HTF.TRUE, "com.android.org.conscrypt.OpenSSLSignature", "engineVerify", "boolean", "byte[]");
+    }
+
+    private static void addDigestCompareHooks(BulkHooker hooks) {
+        hooks.addExact(HTF.TRUE, "java.security.MessageDigest", "isEqual", "boolean", "byte[]", "byte[]");
+    }
+
+    public static void initCommon(BulkHooker hooks) {
+        if (BuildConfig.PATCH_1 && booleanProperty("PATCH_1")) {
+            addSignatureVerifyHooks(hooks);
         }
 
         if (BuildConfig.PATCH_2 && booleanProperty("PATCH_2")) {
-            hooks.addExact(HTF.TRUE, "java.security.MessageDigest", "isEqual", "boolean", "byte[]", "byte[]");
+            addDigestCompareHooks(hooks);
         }
     }
 
@@ -71,10 +79,16 @@ public class HookList {
                 if (SDK_INT >= 28) {
                     // 28 - >>
                     hooks.addAll(impl, "android.content.pm.PackageParser$SigningDetails", "checkCapability");
+                    hooks.addAll(HTF.TRUE, "android.content.pm.PackageParser$SigningDetails", "checkCapabilityRecover");
+                    hooks.addAll(HTF.TRUE, "android.content.pm.PackageParser$SigningDetails", "hasCommonAncestor");
+                    hooks.addAll(HTF.TRUE, "android.content.pm.PackageParser$SigningDetails", "signaturesMatchExactly");
                 }
                 if (SDK_INT >= 33) {
                     // 33 - >>
                     hooks.addAll(impl, "android.content.pm.SigningDetails", "checkCapability");
+                    hooks.addAll(HTF.TRUE, "android.content.pm.SigningDetails", "checkCapabilityRecover");
+                    hooks.addAll(HTF.TRUE, "android.content.pm.SigningDetails", "hasCommonAncestor");
+                    hooks.addAll(HTF.TRUE, "android.content.pm.SigningDetails", "signaturesMatchExactly");
                 }
             }
 
@@ -95,6 +109,9 @@ public class HookList {
             } else {
                 // 28 - >>
                 hooks.addAll(HTF.FALSE, "com.android.server.pm.PackageManagerServiceUtils", "verifySignatures");
+                hooks.addAll(HTF.FALSE, "com.android.server.pm.PackageManagerServiceUtils", "matchSignatureInSystem");
+                hooks.addAll(HTF.FALSE, "com.android.server.pm.PackageManagerServiceUtils", "matchSignaturesCompat");
+                hooks.addAll(HTF.FALSE, "com.android.server.pm.PackageManagerServiceUtils", "matchSignaturesRecover");
             }
 
             if (SDK_INT == 31 || SDK_INT == 32) {
@@ -123,9 +140,20 @@ public class HookList {
             }
             if (SDK_INT >= 30) {
                 // 30 - >>
-                hooks.addAll(HTF.FALSE, "android.util.apk.ApkSignatureVerifier", "getMinimumSignatureSchemeVersionForTargetSdk");
+                hooks.addAll(HTF.constant(1), "android.util.apk.ApkSignatureVerifier", "getMinimumSignatureSchemeVersionForTargetSdk");
                 // 30 - >>
-                hooks.addAll(HTF.FALSE, "com.android.apksig.ApkVerifier", "getMinimumSignatureSchemeVersionForTargetSdk");
+                hooks.addAll(HTF.constant(1), "com.android.apksig.ApkVerifier", "getMinimumSignatureSchemeVersionForTargetSdk");
+            }
+            if (SDK_INT >= 28) {
+                // Framework/APEX verifier paths used while parsing staged APKs in system_server.
+                hooks.addAll(HTF.NOP, "android.util.apk.ApkSigningBlockUtils", "verifyIntegrityFor1MbChunkBasedAlgorithm");
+                hooks.addPattern(HTF.TRUE, "android.util.jar.StrictJarVerifier", ".*verifyMessageDigest\\(.*\\).*");
+            }
+
+            if (SDK_INT >= 31) {
+                // 31 - >>
+                hooks.addAll(HTF.TRUE, "com.android.server.pm.KeySetManagerService", "checkUpgradeKeySetLocked");
+                hooks.addAll(HTF.FALSE, "com.android.server.pm.VerifyingSession", "isVerificationEnabled");
             }
 
             switch (SDK_INT) {

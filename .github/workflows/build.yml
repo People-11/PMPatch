@@ -1,0 +1,174 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - "v*"
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build PMPatch
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout AndroidVMTools
+        uses: actions/checkout@v4
+        with:
+          repository: vova7878/AndroidVMTools
+          ref: 335b118dbb32a15117500c5f4ced1666ad20258f
+          path: external/AndroidVMTools
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: |
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Build release variant
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :module:assemblePatch12Release :module:assemblePatch3Release :module:assembleFullRelease
+
+      - name: Collect modules
+        run: |
+          mkdir -p artifacts
+          find module/build -type f -name "*.zip" -print -exec cp {} artifacts/ \;
+          if [ -z "$(find artifacts -type f -name '*.zip' -print -quit)" ]; then
+            echo "No module zip files were produced. Build outputs:"
+            find module/build -maxdepth 5 -type f | sort
+            exit 1
+          fi
+          ls -lah artifacts
+
+      - name: Build selectable module
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf selector
+          mkdir -p selector/variants
+
+          unzip -q "artifacts/PMPatch-Core.zip" -d selector/variants/patch12
+          unzip -q "artifacts/PMPatch-PM.zip" -d selector/variants/patch3
+          unzip -q "artifacts/PMPatch-All.zip" -d selector/variants/full
+
+          cp -a selector/variants/full/META-INF selector/
+          cp selector/variants/full/module.prop selector/module.prop
+          rm -rf selector/variants/patch12/META-INF
+          rm -rf selector/variants/patch3/META-INF
+          rm -rf selector/variants/full/META-INF
+
+          cat > selector/customize.sh <<'EOF'
+          SKIPUNZIP=1
+
+          fail_install() {
+            ui_print "$1"
+            exit 1
+          }
+
+          extract_variant_dir() {
+            local source_dir="$1"
+            local target_dir="$2"
+
+            if type package_extract_dir >/dev/null 2>&1; then
+              package_extract_dir "$source_dir" "$target_dir"
+              return
+            fi
+
+            ZIPFILE="${ZIPFILE:-${3:-}}"
+            [ -n "$ZIPFILE" ] || fail_install "! ZIPFILE is not set"
+            local tmp="${TMPDIR:-/dev/tmp}/pmpatch_variant"
+            rm -rf "$tmp"
+            mkdir -p "$tmp" "$target_dir"
+            unzip -oq "$ZIPFILE" "$source_dir/*" -d "$tmp" || fail_install "! Failed to extract $source_dir"
+            cp -af "$tmp/$source_dir/." "$target_dir/" || fail_install "! Failed to install $source_dir"
+            rm -rf "$tmp"
+          }
+
+          select_key() {
+            if type chooseport >/dev/null 2>&1; then
+              chooseport
+              return
+            fi
+
+            command -v getevent >/dev/null 2>&1 || fail_install "! getevent is not available for volume-key selection"
+            ui_print "  Waiting for volume key..."
+            while true; do
+              local event
+              event="$(getevent -qlc 1 2>/dev/null)"
+              case "$event" in
+                *KEY_VOLUMEDOWN*DOWN*) return 0 ;;
+                *KEY_VOLUMEUP*DOWN*) return 1 ;;
+              esac
+            done
+          }
+
+          choose_variant() {
+            local variants="patch3 patch12 full"
+            local names="PMPatch-PM PMPatch-Core PMPatch-All"
+            local index=0
+
+            while true; do
+              local variant="$(echo "$variants" | awk -v n="$index" '{ print $(n + 1) }')"
+              local name="$(echo "$names" | awk -v n="$index" '{ print $(n + 1) }')"
+
+              ui_print "- Current: $name"
+              case "$variant" in
+                patch3)
+                  ui_print "  Hook PackageManager (Recommended)"
+                  ;;
+                patch12)
+                  ui_print "  Hook generic signature and digest checks"
+                  ui_print "  Might cause bootloop and root detection"
+                  ;;
+                full)
+                  ui_print "  Hook All"
+                  ;;
+              esac
+              ui_print "  Vol- next, Vol+ install"
+
+              if select_key; then
+                index=$(( (index + 1) % 3 ))
+              else
+                PMPATCH_VARIANT="$variant"
+                PMPATCH_NAME="$name"
+                return
+              fi
+            done
+          }
+
+          choose_variant
+
+          ui_print "- Installing $PMPATCH_NAME"
+          extract_variant_dir "variants/$PMPATCH_VARIANT" "$MODPATH"
+          rm -rf "$MODPATH/variants"
+          EOF
+
+          chmod 0644 selector/customize.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PMPatchSelectable
+          path: selector/*

@@ -5,8 +5,6 @@ plugins {
     alias(libs.plugins.java.zygisk)
 }
 
-def updateJsonBase = "https://raw.githubusercontent.com/vova7878-modules/PMPatch/main/updates/"
-
 android {
     namespace 'com.v7878.hooks.pmpatch'
     compileSdk 36
@@ -14,11 +12,15 @@ android {
     defaultConfig {
         minSdk 26
         targetSdk 36
-        versionCode 1_002_000
-        versionName "v1.2.0"
+        versionCode 1_002_001
+        versionName "v1.2.1"
 
         buildConfigField("boolean", "RUN_FOR_APPLICATIONS", "false")
         buildConfigField("boolean", "RUN_FOR_SYSTEM_SERVER", "true")
+
+        ndk {
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
     }
 
     buildFeatures {
@@ -47,10 +49,9 @@ android {
             zygisk {
                 packages(ZygoteLoader.ALL_PACKAGES)
 
-                id = "com_v7878_pmpatch_12"
-                name = "PMPatch12"
-                updateJson = "${updateJsonBase}update_12.json"
-                archiveName = "PMPatch12"
+                id = "com_v7878_pmpatch"
+                name = "PMPatch-Core"
+                archiveName = "PMPatch-Core"
             }
 
             buildConfigField("boolean", "PATCH_1", "true")
@@ -64,10 +65,9 @@ android {
             zygisk {
                 packages(ZygoteLoader.PACKAGE_SYSTEM_SERVER)
 
-                id = "com_v7878_pmpatch_3"
-                name = "PMPatch3"
-                updateJson = "${updateJsonBase}update_3.json"
-                archiveName = "PMPatch3"
+                id = "com_v7878_pmpatch"
+                name = "PMPatch-PM"
+                archiveName = "PMPatch-PM"
             }
 
             buildConfigField("boolean", "PATCH_1", "false")
@@ -81,10 +81,9 @@ android {
             zygisk {
                 packages(ZygoteLoader.ALL_PACKAGES)
 
-                id = "com_v7878_pmpatch_full"
-                name = "PMPatchFull"
-                updateJson = "${updateJsonBase}update_full.json"
-                archiveName = "PMPatchFull"
+                id = "com_v7878_pmpatch"
+                name = "PMPatch-All"
+                archiveName = "PMPatch-All"
             }
 
             buildConfigField("boolean", "PATCH_1", "true")
@@ -104,9 +103,9 @@ android {
                 property("PATCH_2", "true")
                 property("PATCH_3", "true")
 
-                id = "com_v7878_pmpatch_lp"
-                name = "PMPatchLP"
-                archiveName = "PMPatchLP"
+                id = "com_v7878_pmpatch"
+                name = "PMPatch-LP"
+                archiveName = "PMPatch-LP"
             }
 
             buildConfigField("boolean", "PATCH_1", "true")
@@ -117,13 +116,13 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
 }
 
 zygisk {
-    author = "v7878"
+    author = "v7878, People11"
     description = "Disable signature verification For Android"
     entrypoint = "com.v7878.hooks.pmpatch.Main"
     attachNativeLibs = false
@@ -133,4 +132,8 @@ zygisk {
 dependencies {
     implementation libs.androidvmtools
     implementation libs.r8.annotations
+}
+
+configurations.configureEach {
+    exclude group: 'com.github.vova7878', module: 'R8Annotations'
 }

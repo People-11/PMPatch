@@ -1,10 +1,7 @@
-# Adding optimization introduces certain risks, since for example not
-# all optimizations performed by ProGuard works on all versions of Dalvik.
-# The following flags turn off various optimizations known to have issues,
-# but the list may not be complete or up to date.
--optimizations !code/simplification/cast,!field/*,!class/merging/*
--optimizationpasses 5
+# minSdk 26 (Android 8+) runs ART, not Dalvik — all optimizations are safe.
+-optimizationpasses 10
 -allowaccessmodification
+-mergeinterfacesaggressively
 
 -dontusemixedcaseclassnames
 -verbose

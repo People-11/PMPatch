@@ -1,2 +1,0 @@
-- Support for the latest Android 16 changes
-- Fixed crashes for isolated processes
