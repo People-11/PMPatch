@@ -16,6 +16,17 @@ import com.v7878.zygisk.ZygoteLoader;
 import java.security.Signature;
 
 public class HookList {
+    private static final String[] PM_INSTALL_STACK = {
+            "installPackage",
+            "preparePackage",
+            "prepareScannedPackage",
+            "reconcilePackage",
+            "scanPackage",
+            "scanDir",
+            "commitPackage",
+            "replacePackage"
+    };
+
     private static boolean booleanProperty(String name) {
         if (BuildConfig.USE_CONFIG) {
             return Boolean.parseBoolean(ZygoteLoader.getProperties()
@@ -79,26 +90,29 @@ public class HookList {
 
     public static void initSystem(BulkHooker hooks) {
         if (BuildConfig.PATCH_3 && booleanProperty("PATCH_3")) {
+            var install_true = HTF.constantByStackPrefix(true, PM_INSTALL_STACK, null);
+            var install_false = HTF.constantByStackPrefix(false, PM_INSTALL_STACK, null);
+            var install_nop = HTF.constantByStackPrefix(null, PM_INSTALL_STACK, null);
+
             {
-                var impl = SDK_INT < 33 ? HTF.TRUE : HTF.constant(true, new String[]{"installPackagesLI", "preparePackageLI", "preparePackage"}, new String[]{"reconcilePackages"});
                 if (SDK_INT >= 28) {
                     // 28 - >>
-                    hooks.addAll(impl, "android.content.pm.PackageParser$SigningDetails", "checkCapability");
-                    hooks.addAll(HTF.TRUE, "android.content.pm.PackageParser$SigningDetails", "checkCapabilityRecover");
-                    hooks.addAll(HTF.TRUE, "android.content.pm.PackageParser$SigningDetails", "hasCommonAncestor");
-                    hooks.addAll(HTF.TRUE, "android.content.pm.PackageParser$SigningDetails", "signaturesMatchExactly");
+                    hooks.addAll(install_true, "android.content.pm.PackageParser$SigningDetails", "checkCapability");
+                    hooks.addAll(install_true, "android.content.pm.PackageParser$SigningDetails", "checkCapabilityRecover");
+                    hooks.addAll(install_true, "android.content.pm.PackageParser$SigningDetails", "hasCommonAncestor");
+                    hooks.addAll(install_true, "android.content.pm.PackageParser$SigningDetails", "signaturesMatchExactly");
                 }
                 if (SDK_INT >= 33) {
                     // 33 - >>
-                    hooks.addAll(impl, "android.content.pm.SigningDetails", "checkCapability");
-                    hooks.addAll(HTF.TRUE, "android.content.pm.SigningDetails", "checkCapabilityRecover");
-                    hooks.addAll(HTF.TRUE, "android.content.pm.SigningDetails", "hasCommonAncestor");
-                    hooks.addAll(HTF.TRUE, "android.content.pm.SigningDetails", "signaturesMatchExactly");
+                    hooks.addAll(install_true, "android.content.pm.SigningDetails", "checkCapability");
+                    hooks.addAll(install_true, "android.content.pm.SigningDetails", "checkCapabilityRecover");
+                    hooks.addAll(install_true, "android.content.pm.SigningDetails", "hasCommonAncestor");
+                    hooks.addAll(install_true, "android.content.pm.SigningDetails", "signaturesMatchExactly");
                 }
             }
 
             if (SDK_INT < 33) {
-                HookTransformer compare = HTF.constant(SIGNATURE_MATCH, null, new String[]{"scanPackageLI"});
+                HookTransformer compare = HTF.constantByStackPrefix(SIGNATURE_MATCH, PM_INSTALL_STACK, null);
                 if (SDK_INT <= 27) {
                     // 26 - 27
                     hooks.addExact(compare, "com.android.server.pm.PackageManagerService", "compareSignatures", "int", "android.content.pm.Signature[]", "android.content.pm.Signature[]");
@@ -110,21 +124,21 @@ public class HookList {
 
             if (SDK_INT <= 27) {
                 // 26 - 27
-                hooks.addAll(HTF.NOP, "com.android.server.pm.PackageManagerService", "verifySignaturesLP");
+                hooks.addAll(install_nop, "com.android.server.pm.PackageManagerService", "verifySignaturesLP");
             } else {
                 // 28 - >>
-                hooks.addAll(HTF.FALSE, "com.android.server.pm.PackageManagerServiceUtils", "verifySignatures");
-                hooks.addAll(HTF.FALSE, "com.android.server.pm.PackageManagerServiceUtils", "matchSignatureInSystem");
-                hooks.addAll(HTF.FALSE, "com.android.server.pm.PackageManagerServiceUtils", "matchSignaturesCompat");
-                hooks.addAll(HTF.FALSE, "com.android.server.pm.PackageManagerServiceUtils", "matchSignaturesRecover");
+                hooks.addAll(install_false, "com.android.server.pm.PackageManagerServiceUtils", "verifySignatures");
+                hooks.addAll(install_false, "com.android.server.pm.PackageManagerServiceUtils", "matchSignatureInSystem");
+                hooks.addAll(install_false, "com.android.server.pm.PackageManagerServiceUtils", "matchSignaturesCompat");
+                hooks.addAll(install_false, "com.android.server.pm.PackageManagerServiceUtils", "matchSignaturesRecover");
             }
 
             if (SDK_INT == 31 || SDK_INT == 32) {
                 // 31 - 32
-                hooks.addAll(HTF.TRUE, "com.android.server.pm.PackageManagerService", "doesSignatureMatchForPermissions");
+                hooks.addAll(install_true, "com.android.server.pm.PackageManagerService", "doesSignatureMatchForPermissions");
             } else if (SDK_INT >= 33) {
                 // 33 - >>
-                hooks.addAll(HTF.TRUE, "com.android.server.pm.InstallPackageHelper", "doesSignatureMatchForPermissions");
+                hooks.addAll(install_true, "com.android.server.pm.InstallPackageHelper", "doesSignatureMatchForPermissions");
             }
 
             if (SDK_INT <= 32) {
@@ -141,13 +155,13 @@ public class HookList {
 
             if (SDK_INT >= 33) {
                 // 33 - >>
-                hooks.addAll(HTF.NOP, "com.android.server.pm.ScanPackageUtils", "assertMinSignatureSchemeIsValid");
+                hooks.addAll(install_nop, "com.android.server.pm.ScanPackageUtils", "assertMinSignatureSchemeIsValid");
             }
             if (SDK_INT >= 30) {
                 // 30 - >>
-                hooks.addAll(HTF.constant(1), "android.util.apk.ApkSignatureVerifier", "getMinimumSignatureSchemeVersionForTargetSdk");
+                hooks.addAll(HTF.constantByStackPrefix(1, PM_INSTALL_STACK, null), "android.util.apk.ApkSignatureVerifier", "getMinimumSignatureSchemeVersionForTargetSdk");
                 // 30 - >>
-                hooks.addAll(HTF.constant(1), "com.android.apksig.ApkVerifier", "getMinimumSignatureSchemeVersionForTargetSdk");
+                hooks.addAll(HTF.constantByStackPrefix(1, PM_INSTALL_STACK, null), "com.android.apksig.ApkVerifier", "getMinimumSignatureSchemeVersionForTargetSdk");
             }
             if (SDK_INT >= 28) {
                 // Framework/APEX verifier paths used while parsing staged APKs in system_server.
@@ -157,8 +171,8 @@ public class HookList {
 
             if (SDK_INT >= 31) {
                 // 31 - >>
-                hooks.addAll(HTF.TRUE, "com.android.server.pm.KeySetManagerService", "checkUpgradeKeySetLocked");
-                hooks.addAll(HTF.FALSE, "com.android.server.pm.VerifyingSession", "isVerificationEnabled");
+                hooks.addAll(install_true, "com.android.server.pm.KeySetManagerService", "checkUpgradeKeySetLocked");
+                hooks.addAll(install_false, "com.android.server.pm.VerifyingSession", "isVerificationEnabled");
             }
 
             switch (SDK_INT) {

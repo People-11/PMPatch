@@ -59,6 +59,15 @@ public class HTF {
         return false;
     }
 
+    private static boolean startsWithAny(String[] array, String value) {
+        for (String tmp : array) {
+            if (value.startsWith(tmp)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static HookTransformer constant(Object value, String[] run, String[] exclude) {
         return (original, frame) -> {
             printStackTrace(frame);
@@ -85,6 +94,34 @@ public class HTF {
                 if (frame.type().returnType() != void.class) {
                     frame.accessor().setValue(RETURN_VALUE_IDX, value);
                 }
+            }
+        };
+    }
+
+    public static HookTransformer constantByStackPrefix(Object value, String[] run, String[] exclude) {
+        return (original, frame) -> {
+            printStackTrace(frame);
+
+            boolean run_flag = run == null;
+            boolean exclude_flag = false;
+            var trace = Thread.currentThread().getStackTrace();
+
+            for (var element : trace) {
+                String name = element.getMethodName();
+
+                if (!run_flag && startsWithAny(run, name)) {
+                    run_flag = true;
+                }
+                if (exclude != null && startsWithAny(exclude, name)) {
+                    exclude_flag = true;
+                    break;
+                }
+            }
+
+            if (!run_flag || exclude_flag) {
+                Transformers.invokeExact(original, frame);
+            } else if (frame.type().returnType() != void.class) {
+                frame.accessor().setValue(RETURN_VALUE_IDX, value);
             }
         };
     }
