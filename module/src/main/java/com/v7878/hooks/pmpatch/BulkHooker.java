@@ -13,17 +13,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 public class BulkHooker {
-    public record HookElement(HookTransformer impl, String pattern) {
+    public record HookElement(HookTransformer impl, Pattern pattern) {
     }
 
     private final Map<String, List<HookElement>> hooks = new HashMap<>();
 
     public void addPattern(HookTransformer impl, String clazz, String pattern) {
         hooks.computeIfAbsent(clazz, unused -> new ArrayList<>())
-                .add(new HookElement(impl, pattern));
+                .add(new HookElement(impl, Pattern.compile(pattern)));
     }
 
     public void addAll(HookTransformer impl, String clazz, String method_name) {
@@ -45,16 +44,18 @@ public class BulkHooker {
                 continue;
             }
             var executables = getHiddenExecutables(clazz);
-            for (var element : entry.getValue()) {
-                Stream.of(executables)
-                        .filter(Utils.filter(element.pattern()))
-                        .forEach(executable -> {
-                            if (BuildConfig.DEBUG) {
-                                Log.i(TAG, "Hooked: " + executable);
-                            }
-                            Hooks.hook(executable, Hooks.EntryPointType.DIRECT,
-                                    element.impl(), Hooks.EntryPointType.DIRECT);
-                        });
+            var elements = entry.getValue();
+            for (var executable : executables) {
+                var descriptor = Utils.printExecutable(executable);
+                for (var element : elements) {
+                    if (element.pattern().matcher(descriptor).matches()) {
+                        if (BuildConfig.DEBUG) {
+                            Log.i(TAG, "Hooked: " + executable);
+                        }
+                        Hooks.hook(executable, Hooks.EntryPointType.DIRECT,
+                                element.impl(), Hooks.EntryPointType.DIRECT);
+                    }
+                }
             }
         }
     }

@@ -39,13 +39,11 @@ public class HookList {
             var accessor = frame.accessor();
 
             Signature thiz = accessor.getReference(0);
-            switch (thiz.getAlgorithm().toLowerCase()) {
-                case "rsa-sha1", "sha1withrsa", "sha256withdsa", "sha256withrsa" -> {
-                    int state = AccessI.INSTANCE.state(thiz);
-                    if (state == 3 /* Signature.VERIFY */) {
-                        frame.accessor().setBoolean(RETURN_VALUE_IDX, true);
-                        return;
-                    }
+            if (isPatchedSignatureAlgorithm(thiz.getAlgorithm())) {
+                int state = AccessI.INSTANCE.state(thiz);
+                if (state == 3 /* Signature.VERIFY */) {
+                    frame.accessor().setBoolean(RETURN_VALUE_IDX, true);
+                    return;
                 }
             }
 
@@ -56,6 +54,13 @@ public class HookList {
         hooks.addExact(verify_impl, "java.security.Signature", "verify", "boolean", "byte[]", "int", "int");
 
         hooks.addExact(HTF.TRUE, "com.android.org.conscrypt.OpenSSLSignature", "engineVerify", "boolean", "byte[]");
+    }
+
+    private static boolean isPatchedSignatureAlgorithm(String algorithm) {
+        return "rsa-sha1".equalsIgnoreCase(algorithm) ||
+                "sha1withrsa".equalsIgnoreCase(algorithm) ||
+                "sha256withdsa".equalsIgnoreCase(algorithm) ||
+                "sha256withrsa".equalsIgnoreCase(algorithm);
     }
 
     private static void addDigestCompareHooks(BulkHooker hooks) {

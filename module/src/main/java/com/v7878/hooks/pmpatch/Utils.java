@@ -6,9 +6,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
-import java.util.Objects;
-import java.util.function.Predicate;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 public class Utils {
@@ -61,13 +58,7 @@ public class Utils {
         return null;
     }
 
-    private static String printExecutable(Executable executable) {
+    public static String printExecutable(Executable executable) {
         return String.format("%s(%s)%s", name(executable), String.join(", ", args(executable)), ret(executable));
-    }
-
-    public static Predicate<Executable> filter(String pattern) {
-        Objects.requireNonNull(pattern);
-        var compiled_pattern = Pattern.compile(pattern);
-        return executable -> compiled_pattern.matcher(printExecutable(executable)).matches();
     }
 }
