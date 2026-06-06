@@ -14,17 +14,33 @@ import com.v7878.vmtools.HookTransformer;
 import com.v7878.zygisk.ZygoteLoader;
 
 import java.security.Signature;
+import java.util.Arrays;
 
 public class HookList {
+    private static final int CERT_CAPABILITY_PERMISSION = 4;
+    private static final int CERT_CAPABILITY_AUTH = 16;
+    private static final int[] CERT_CAPABILITY_EXCLUDED = {
+            CERT_CAPABILITY_PERMISSION,
+            CERT_CAPABILITY_AUTH
+    };
+
     private static final String[] PM_INSTALL_STACK = {
+            "collectCertificates",
+            "assertApkConsistent",
+            "assertPackageConsistent",
             "installPackage",
             "preparePackage",
             "prepareScannedPackage",
+            "parseVerityDigest",
             "reconcilePackage",
             "scanPackage",
             "scanDir",
+            "validateApkInstall",
             "commitPackage",
-            "replacePackage"
+            "replacePackage",
+            "verifyIntegrity",
+            "verifySigner",
+            "verifyV"
     };
 
     private static boolean booleanProperty(String name) {
@@ -93,19 +109,21 @@ public class HookList {
             var install_true = HTF.constantByStackPrefix(true, PM_INSTALL_STACK, null);
             var install_false = HTF.constantByStackPrefix(false, PM_INSTALL_STACK, null);
             var install_nop = HTF.constantByStackPrefix(null, PM_INSTALL_STACK, null);
+            var install_signature_capability = HTF.constantByStackPrefixExceptIntArg(
+                    true, 2, CERT_CAPABILITY_EXCLUDED, PM_INSTALL_STACK, null);
 
             {
                 if (SDK_INT >= 28) {
                     // 28 - >>
-                    hooks.addAll(install_true, "android.content.pm.PackageParser$SigningDetails", "checkCapability");
-                    hooks.addAll(install_true, "android.content.pm.PackageParser$SigningDetails", "checkCapabilityRecover");
+                    hooks.addAll(install_signature_capability, "android.content.pm.PackageParser$SigningDetails", "checkCapability");
+                    hooks.addAll(install_signature_capability, "android.content.pm.PackageParser$SigningDetails", "checkCapabilityRecover");
                     hooks.addAll(install_true, "android.content.pm.PackageParser$SigningDetails", "hasCommonAncestor");
                     hooks.addAll(install_true, "android.content.pm.PackageParser$SigningDetails", "signaturesMatchExactly");
                 }
                 if (SDK_INT >= 33) {
                     // 33 - >>
-                    hooks.addAll(install_true, "android.content.pm.SigningDetails", "checkCapability");
-                    hooks.addAll(install_true, "android.content.pm.SigningDetails", "checkCapabilityRecover");
+                    hooks.addAll(install_signature_capability, "android.content.pm.SigningDetails", "checkCapability");
+                    hooks.addAll(install_signature_capability, "android.content.pm.SigningDetails", "checkCapabilityRecover");
                     hooks.addAll(install_true, "android.content.pm.SigningDetails", "hasCommonAncestor");
                     hooks.addAll(install_true, "android.content.pm.SigningDetails", "signaturesMatchExactly");
                 }
@@ -120,6 +138,7 @@ public class HookList {
                     // 28 - >>
                     hooks.addExact(compare, "com.android.server.pm.PackageManagerServiceUtils", "compareSignatures", "int", "android.content.pm.Signature[]", "android.content.pm.Signature[]");
                 }
+                hooks.addAll(install_true, "android.content.pm.Signature", "areExactMatch");
             }
 
             if (SDK_INT <= 27) {
@@ -165,8 +184,23 @@ public class HookList {
             }
             if (SDK_INT >= 28) {
                 // Framework/APEX verifier paths used while parsing staged APKs in system_server.
-                hooks.addAll(HTF.NOP, "android.util.apk.ApkSigningBlockUtils", "verifyIntegrityFor1MbChunkBasedAlgorithm");
-                hooks.addPattern(HTF.TRUE, "android.util.jar.StrictJarVerifier", ".*verifyMessageDigest\\(.*\\).*");
+                HookTransformer verity_digest = (original, frame) -> {
+                    HTF.printStackTrace(frame);
+                    byte[] data = frame.accessor().getReference(0);
+                    frame.accessor().setValue(RETURN_VALUE_IDX, Arrays.copyOfRange(data, 0, 32));
+                };
+
+                hooks.addAll(install_nop, "android.util.apk.ApkSigningBlockUtils", "verifyIntegrityFor1MbChunkBasedAlgorithm");
+                hooks.addAll(install_nop, "android.util.apk.ApkSigningBlockUtils", "verifyIntegrityForVerityBasedAlgorithm");
+                hooks.addAll(verity_digest, "android.util.apk.ApkSigningBlockUtils", "parseVerityDigestAndVerifySourceLength");
+                hooks.addPattern(install_true, "android.util.jar.StrictJarVerifier", ".*verifyMessageDigest\\(.*\\).*");
+                hooks.addAll(install_true, "android.util.jar.StrictJarVerifier", "verify");
+                hooks.addExact(install_true, "java.security.MessageDigest", "isEqual", "boolean", "byte[]", "byte[]");
+                hooks.addExact(install_true, "com.android.org.conscrypt.OpenSSLSignature", "engineVerify", "boolean", "byte[]");
+            }
+            if (SDK_INT >= 30) {
+                // Avoid install-time rejection for compressed or misaligned resources.arsc.
+                hooks.addAll(install_false, "android.content.res.AssetManager", "containsAllocatedTable");
             }
 
             if (SDK_INT >= 31) {

@@ -50,15 +50,6 @@ public class HTF {
         };
     }
 
-    private static boolean contains(String[] array, String value) {
-        for (String tmp : array) {
-            if (value.equals(tmp)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private static boolean startsWithAny(String[] array, String value) {
         for (String tmp : array) {
             if (value.startsWith(tmp)) {
@@ -68,39 +59,29 @@ public class HTF {
         return false;
     }
 
-    public static HookTransformer constant(Object value, String[] run, String[] exclude) {
-        return (original, frame) -> {
-            printStackTrace(frame);
-
-            boolean run_flag = run == null;
-            boolean exclude_flag = false;
-            var trace = Thread.currentThread().getStackTrace();
-
-            for (var element : trace) {
-                String name = element.getMethodName();
-
-                if (!run_flag && contains(run, name)) {
-                    run_flag = true;
-                }
-                if (exclude != null && contains(exclude, name)) {
-                    exclude_flag = true;
-                    break;
-                }
-            }
-
-            if (!run_flag || exclude_flag) {
-                Transformers.invokeExact(original, frame);
-            } else {
-                if (frame.type().returnType() != void.class) {
-                    frame.accessor().setValue(RETURN_VALUE_IDX, value);
-                }
-            }
-        };
+    public static HookTransformer constantByStackPrefix(Object value, String[] run, String[] exclude) {
+        return constantByStackPrefix(value, run, exclude, -1, null);
     }
 
-    public static HookTransformer constantByStackPrefix(Object value, String[] run, String[] exclude) {
+    public static HookTransformer constantByStackPrefixExceptIntArg(
+            Object value, int arg, int[] except, String[] run, String[] exclude) {
+        return constantByStackPrefix(value, run, exclude, arg, except);
+    }
+
+    private static HookTransformer constantByStackPrefix(
+            Object value, String[] run, String[] exclude, int arg, int[] except) {
         return (original, frame) -> {
             printStackTrace(frame);
+
+            if (arg >= 0 && except != null) {
+                int current = frame.accessor().getInt(arg);
+                for (int tmp : except) {
+                    if (current == tmp) {
+                        Transformers.invokeExact(original, frame);
+                        return;
+                    }
+                }
+            }
 
             boolean run_flag = run == null;
             boolean exclude_flag = false;
