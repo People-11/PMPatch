@@ -45,16 +45,25 @@ public class BulkHooker {
             }
             var executables = getHiddenExecutables(clazz);
             var elements = entry.getValue();
+            var matches = new int[elements.size()];
             for (var executable : executables) {
                 var descriptor = Utils.printExecutable(executable);
-                for (var element : elements) {
+                for (int i = 0; i < elements.size(); i++) {
+                    var element = elements.get(i);
                     if (element.pattern().matcher(descriptor).matches()) {
+                        matches[i]++;
                         if (BuildConfig.DEBUG) {
                             Log.i(TAG, "Hooked: " + executable);
                         }
                         Hooks.hook(executable, Hooks.EntryPointType.DIRECT,
                                 element.impl(), Hooks.EntryPointType.DIRECT);
                     }
+                }
+            }
+            for (int i = 0; i < elements.size(); i++) {
+                if (matches[i] == 0) {
+                    Log.w(TAG, String.format("Nothing matched %s in %s",
+                            elements.get(i).pattern(), entry.getKey()));
                 }
             }
         }

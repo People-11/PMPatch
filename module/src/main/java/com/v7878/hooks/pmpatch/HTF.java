@@ -59,8 +59,16 @@ public class HTF {
         return false;
     }
 
+    // leaves the return slot at its default, like NOP - unlike a null constant,
+    // which would blow up on a primitive return type
+    private static final Object NO_VALUE = new Object();
+
     public static HookTransformer constantByStackPrefix(Object value, String[] run, String[] exclude) {
         return constantByStackPrefix(value, run, exclude, -1, null);
+    }
+
+    public static HookTransformer nopByStackPrefix(String[] run, String[] exclude) {
+        return constantByStackPrefix(NO_VALUE, run, exclude, -1, null);
     }
 
     public static HookTransformer constantByStackPrefixExceptIntArg(
@@ -73,7 +81,8 @@ public class HTF {
         return (original, frame) -> {
             printStackTrace(frame);
 
-            if (arg >= 0 && except != null) {
+            // addAll matches every overload, so only trust the index if it really is an int
+            if (arg >= 0 && except != null && frame.type().parameterType(arg) == int.class) {
                 int current = frame.accessor().getInt(arg);
                 for (int tmp : except) {
                     if (current == tmp) {
@@ -101,7 +110,7 @@ public class HTF {
 
             if (!run_flag || exclude_flag) {
                 Transformers.invokeExact(original, frame);
-            } else if (frame.type().returnType() != void.class) {
+            } else if (value != NO_VALUE && frame.type().returnType() != void.class) {
                 frame.accessor().setValue(RETURN_VALUE_IDX, value);
             }
         };
